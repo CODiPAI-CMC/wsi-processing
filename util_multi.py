@@ -297,7 +297,7 @@ class processor(object):
 
 
     # get slide patch corresponding with annoation mask method
-    def get_patch(self, magnification=100, show=False, save=True):
+    def get_patch(self, magnification=100, show=False, save=True, anno_ratio=(1e-2)*5):
         tissue_mask = self.get_tissue_mask(area_thr=1000000)
         bbox_list = self.get_anno_mask()[0]
         anno_mask = self.get_anno_mask()[1]
@@ -346,7 +346,7 @@ class processor(object):
                     
                     for anno_mask_key in anno_mask.keys():
                         anno_patch = anno_mask[anno_mask_key][start_y:end_y, start_x:end_x]
-                        if (self.get_ratio_mask(anno_patch) >= 0.05) and (self.get_ratio_mask(tissue_mask_patch) >= 0.3):
+                        if (self.get_ratio_mask(anno_patch) >= anno_ratio) and (self.get_ratio_mask(tissue_mask_patch) >= 0.3):
                             and_patch = np.logical_and(anno_patch, tissue_mask_patch)*self.mask_tone(anno_mask_key)
                             sum_patch = np.subtract(np.add(and_patch, sum_patch), np.logical_and(and_patch, sum_patch)*self.mask_tone(anno_mask_key))
                             name += '_' + anno_mask_key

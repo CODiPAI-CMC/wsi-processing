@@ -7,6 +7,7 @@ import glob
 parser = argparse.ArgumentParser()
 parser.add_argument('--slide_path', required=True, type=str, help='Input the target slide path.')
 parser.add_argument('--level', required=True, type=int, help='Input the level of target slide.')
+parser.add_argument('--anno_ratio', required=True, type=float, help='Input the ratio of annoation.')
 parser.add_argument('--patch_size', default=512, type=int, help='Input the image shape.')
 parser.add_argument('--magnification',required=True, type=int, help='Input the magnification of the patch.')
 parser.add_argument('--save_patch_path', required=True, type=str, help='Input the patch path that will be saved.')
@@ -14,6 +15,7 @@ parser.add_argument('--save_patch_path', required=True, type=str, help='Input th
 # argparse to variable
 args = parser.parse_args()
 slide_path = args.slide_path
+anno_ratio = args.anno_ratio
 level = args.level
 patch_size = args.patch_size
 save_patch_path = args.save_patch_path
@@ -31,7 +33,7 @@ init_params = {
 # svsfile_to_patch extrcator
 def extract(init_params, magnification=magnification):
     slide = util_multi.processor(init_params)
-    slide.get_patch(magnification=magnification, save=True)
+    slide.get_patch(magnification=magnification, save=True, anno_ratio=anno_ratio)
 
 # slide_alth and list setting
 slide_path = slide_path + '*.svs' 

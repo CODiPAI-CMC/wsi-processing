@@ -281,19 +281,29 @@ class processor(object):
     # extract patch from get patch 
     def execute_patch(self, patch_img, mask_img, patch_count, save_dir, name, save=False, show=False):
         resize_image = cv2.resize(patch_img, (self.patch_size, self.patch_size), cv2.INTER_AREA)
+        resize_image2 = cv2.resize(patch_img2, (self.patch_size, self.patch_size), cv2.INTER_AREA)
+        resize_image3 = cv2.resize(patch_img3, (self.patch_size, self.patch_size), cv2.INTER_AREA)
         resize_mask = cv2.resize(mask_img, (self.patch_size, self.patch_size), cv2.INTER_LINEAR)
         
         if show == True:
-            plt.figure(figsize=(10,5))
-            plt.subplot(1,2,1)
+            plt.figure(figsize=(20,5))
+            plt.subplot(1,4,1)
             plt.imshow(resize_image)
             plt.suptitle(f'{patch_count}')
-            plt.subplot(1,2,2)
-            plt.imshow(resize_mask, cmap='rainbow', vmin=0, vmax=255)
+            plt.subplot(1,4,2)
+            plt.imshow(resize_image2)
+            plt.suptitle(f'{patch_count2}')
+            plt.subplot(1,4,3)
+            plt.imshow(resize_image3)
+            plt.suptitle(f'{patch_count3}')
+            plt.subplot(1,4,4)
+            plt.imshow(resize_mask, cmap='Oranges', vmin=0, vmax=3)
             plt.suptitle(f'{patch_count}{name}')
         if save == True:
-            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/img', f'{patch_count}{name}.png', resize_image)
-            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/msk', f'{patch_count}{name}.png', resize_mask)
+            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x1', f'{patch_count}{name}.png', resize_image1)
+            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x2', f'{patch_count}{name}.png', resize_image2)
+            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x4', f'{patch_count}{name}.png', resize_image3)
+            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_y1', f'{patch_count}{name}.png', resize_mask)
 
 
     # get slide patch corresponding with annoation mask method
@@ -305,7 +315,6 @@ class processor(object):
         devided_magnification = origin_magnification // magnification
 
         patch_size_lv0 = int(self.patch_size * devided_magnification)
-        patch_size_lv2 = int(patch_size_lv0 // self.multiple)
         print(f'Size_Patch_lv0 : {patch_size_lv0}, Size_Patch_lv2 : {patch_size_lv2}')
 
         step = 1
@@ -339,6 +348,20 @@ class processor(object):
                         level = 0,
                         size = (patch_size_lv0, patch_size_lv0)
                     )).astype(np.uint8)[...,:3]
+                   
+                    img_patch2 = np.array(self.slide.read_region(
+                        location = (int((min_x * self.multiple) + (patch_size_lv0*x) - patch_size_lv0*(1/2)),
+                                    int((min_y * self.multiple) + (patch_size_lv0*y) - patch_size_lv0*(1/2))),
+                        level = 0,
+                        size = (patch_size_lv0*2, patch_size_lv0*2)
+                    )).astype(np.uint8)[...,:3]
+
+                    img_patch3 = np.array(self.slide.read_region(
+                        location = (int((min_x * self.multiple) + (patch_size_lv0*x) - patch_size_lv0*(3/2)),
+                                    int((min_y * self.multiple) + (patch_size_lv0*y) - patch_size_lv0*(3/2))),
+                        level = 0,
+                        size = (patch_size_lv0*4, patch_size_lv0*4)
+                    )).astype(np.uint8)[...,:3]
 
                     tissue_mask_patch = tissue_mask[start_y:end_y, start_x:end_x]
                     sum_patch = np.zeros(((end_y - start_y), (end_x - start_x)))
@@ -354,4 +377,4 @@ class processor(object):
                     sum_patch = sum_patch.astype(np.uint8)
                     if sum_patch.any() != 0:
                         patch_count += 1 
-                        self.execute_patch(img_patch, sum_patch, patch_count, save_dir=save_patch, name=name, save=save, show=show)
+                        self.execute_patch(img_patch, img_patch2, img_patch3, sum_patch, patch_count, save_dir=save_patch, name=name, save=save, show=show)

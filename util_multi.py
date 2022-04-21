@@ -1,7 +1,6 @@
 from skimage             import io, morphology, measure, filters
 from lxml                import etree
 from tqdm                import tqdm, trange
-
 import matplotlib.pyplot as plt
 import numpy             as np 
 import openslide
@@ -279,102 +278,136 @@ class processor(object):
 
 
     # extract patch from get patch 
-    def execute_patch(self, patch_img, mask_img, patch_count, save_dir, name, save=False, show=False):
-        resize_image = cv2.resize(patch_img, (self.patch_size, self.patch_size), cv2.INTER_AREA)
-        resize_image2 = cv2.resize(patch_img2, (self.patch_size, self.patch_size), cv2.INTER_AREA)
-        resize_image3 = cv2.resize(patch_img3, (self.patch_size, self.patch_size), cv2.INTER_AREA)
-        resize_mask = cv2.resize(mask_img, (self.patch_size, self.patch_size), cv2.INTER_LINEAR)
+    def execute_patch(self, img_patch1, img_patch2, img_patch3, img_patch4, mask_img, patch_count, save_dir, name, hooknet):
+        resize_image1 = cv2.resize(img_patch1, (self.patch_size, self.patch_size), cv2.INTER_AREA)
+        resize_image2 = cv2.resize(img_patch2, (self.patch_size, self.patch_size), cv2.INTER_AREA)
+        resize_image3 = cv2.resize(img_patch3, (self.patch_size, self.patch_size), cv2.INTER_AREA)
+        resize_image4 = cv2.resize(img_patch4, (self.patch_size, self.patch_size), cv2.INTER_AREA)
+        resize_mask = cv2.resize(mask_img, (int(self.patch_size-214), int(self.patch_size-214)), cv2.INTER_LINEAR) if hooknet else cv2.resize(mask_img, (int(self.patch_size), int(self.patch_size)), cv2.INTER_LINEAR)
         
-        if show == True:
-            plt.figure(figsize=(20,5))
-            plt.subplot(1,4,1)
-            plt.imshow(resize_image)
-            plt.suptitle(f'{patch_count}')
-            plt.subplot(1,4,2)
-            plt.imshow(resize_image2)
-            plt.suptitle(f'{patch_count2}')
-            plt.subplot(1,4,3)
-            plt.imshow(resize_image3)
-            plt.suptitle(f'{patch_count3}')
-            plt.subplot(1,4,4)
-            plt.imshow(resize_mask, cmap='Oranges', vmin=0, vmax=3)
-            plt.suptitle(f'{patch_count}{name}')
-        if save == True:
-            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x1', f'{patch_count}{name}.png', resize_image1)
-            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x2', f'{patch_count}{name}.png', resize_image2)
-            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x4', f'{patch_count}{name}.png', resize_image3)
-            self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_y1', f'{patch_count}{name}.png', resize_mask)
+        self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x1', f'{patch_count}{name}.png', resize_image1)
+        self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x2', f'{patch_count}{name}.png', resize_image2)
+        self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x4', f'{patch_count}{name}.png', resize_image3)
+        self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_x8', f'{patch_count}{name}.png', resize_image4)
+        self.save_patch(save_dir + '/' + self.slide_path.split('.')[-2][-3:] + '/input_y1', f'{patch_count}{name}.png', resize_mask)
 
 
     # get slide patch corresponding with annoation mask method
-    def get_patch(self, magnification=100, show=False, save=True, anno_ratio=(1e-2)*5):
+    def get_patch(self, magnification, anno_percent, classes, hooknet):
+        # check slide name
+        slide_name = self.slide_path.split('/')[-1][:-4]
+        print(slide_name)
+
+        # mask setting and mpp setting
         tissue_mask = self.get_tissue_mask(area_thr=1000000)
         bbox_list = self.get_anno_mask()[0]
         anno_mask = self.get_anno_mask()[1]
         origin_magnification = float(self.properties['openslide.objective-power'])*10
         devided_magnification = origin_magnification // magnification
 
-        patch_size_lv0 = int(self.patch_size * devided_magnification)
-        print(f'Size_Patch_lv0 : {patch_size_lv0}, Size_Patch_lv2 : {patch_size_lv2}')
+        # patch size setting
+        if hooknet:
+            print('hooknet mode!')
+            patch_size_lv0 = int(284 * devided_magnification)
+            mask_size_lv0 = int(70 * devided_magnification)        
+        else:
+            print('normal mode!')
+            patch_size_lv0 = int(self.patch_size * devided_magnification)
 
+        # patch generation setting
         step = 1
         patch_count = 0
         save_patch = self.save_patch_path
-        print(f'bbox_list : {bbox_list}, anno_mask.keys() : {anno_mask.keys()}')
 
+        # loading bounding boxes one by one 
         for bbox in bbox_list:
-            
             min_x = min(j[0] for j in bbox)
             max_x = max(j[0] for j in bbox)
             min_y = min(j[1] for j in bbox)
             max_y = max(j[1] for j in bbox)
 
+            # patch range generation
             slide_w = max_x - min_x
             slide_h = max_y - min_y
-            print(f'Min x : {min_x}, Max x : {max_x}, Min y : {min_y}, Max y : {max_y}')
-            print(f'Slide Width : {slide_w}, Slide Height : {slide_h}')
             y_seq, x_seq = self.get_seq_range(slide_w, slide_h, self.multiple, patch_size_lv0, patch_size_lv0)
 
+            # loading patch on by one
             for y in y_seq:
                 for x in x_seq:
-                    start_x = int(min_x + (patch_size_lv0*x/self.multiple))
-                    end_x = int(min_x+(patch_size_lv0*(x+step)/self.multiple))
-                    start_y = int(min_y + (patch_size_lv0*y/self.multiple))
-                    end_y = int(min_y+(patch_size_lv0*(y+step)/self.multiple))
 
-                    img_patch = np.array(self.slide.read_region(
-                        location = (int((min_x * self.multiple) + (patch_size_lv0*x)),
-                                    int((min_y * self.multiple) + (patch_size_lv0*y))),
+                    # patch location setting
+                    start_x = int(min_x + (mask_size_lv0*x/self.multiple)) if hooknet else int(min_x + (patch_size_lv0*x/self.multiple))
+                    end_x = int(min_x+(mask_size_lv0*(x+step)/self.multiple)) if hooknet else int(min_x+(patch_size_lv0*(x+step)/self.multiple))
+                    start_y = int(min_y + (mask_size_lv0*y/self.multiple)) if hooknet else int(min_y + (patch_size_lv0*y/self.multiple))
+                    end_y = int(min_y+(mask_size_lv0*(y+step)/self.multiple)) if hooknet else int(min_y+(patch_size_lv0*(y+step)/self.multiple))                    
+
+                    img1_x_start = int(start_x*self.multiple - 107*devided_magnification) if hooknet else int(start_x*self.multiple)
+                    img1_y_start = int(start_y*self.multiple - 107*devided_magnification) if hooknet else int(start_y*self.multiple)
+                    img2_x_start = int(start_x*self.multiple - 107*devided_magnification - patch_size_lv0*(1/2)) if hooknet else int(start_x*self.multiple - patch_size_lv0*(1/2))
+                    img2_y_start = int(start_y*self.multiple - 107*devided_magnification - patch_size_lv0*(1/2)) if hooknet else int(start_y*self.multiple - patch_size_lv0*(1/2))
+                    img3_x_start = int(start_x*self.multiple - 107*devided_magnification - patch_size_lv0*(3/2)) if hooknet else int(start_x*self.multiple - patch_size_lv0*(3/2))
+                    img3_y_start = int(start_y*self.multiple - 107*devided_magnification - patch_size_lv0*(3/2)) if hooknet else int(start_y*self.multiple - patch_size_lv0*(3/2))
+                    img4_x_start = int(start_x*self.multiple - 107*devided_magnification - patch_size_lv0*(7/2)) if hooknet else int(start_x*self.multiple - patch_size_lv0*(7/2))
+                    img4_y_start = int(start_y*self.multiple - 107*devided_magnification - patch_size_lv0*(7/2)) if hooknet else int(start_y*self.multiple - patch_size_lv0*(7/2))
+
+                    # generating 1x magnification of mask
+                    img_patch1 = np.array(self.slide.read_region(
+                        location = (img1_x_start, img1_y_start),
                         level = 0,
                         size = (patch_size_lv0, patch_size_lv0)
                     )).astype(np.uint8)[...,:3]
-                   
+                
+                    # generating 2x magnification of mask
                     img_patch2 = np.array(self.slide.read_region(
-                        location = (int((min_x * self.multiple) + (patch_size_lv0*x) - patch_size_lv0*(1/2)),
-                                    int((min_y * self.multiple) + (patch_size_lv0*y) - patch_size_lv0*(1/2))),
+                        location = (img2_x_start, img2_y_start),
                         level = 0,
                         size = (patch_size_lv0*2, patch_size_lv0*2)
                     )).astype(np.uint8)[...,:3]
 
+                    # generating 4x magnification of mask
                     img_patch3 = np.array(self.slide.read_region(
-                        location = (int((min_x * self.multiple) + (patch_size_lv0*x) - patch_size_lv0*(3/2)),
-                                    int((min_y * self.multiple) + (patch_size_lv0*y) - patch_size_lv0*(3/2))),
+                        location = (img3_x_start, img3_y_start),
                         level = 0,
                         size = (patch_size_lv0*4, patch_size_lv0*4)
                     )).astype(np.uint8)[...,:3]
 
+                    # generating 8x magnification of mask
+                    img_patch4 = np.array(self.slide.read_region(
+                        location = (img4_x_start, img4_y_start),
+                        level = 0,
+                        size = (patch_size_lv0*8, patch_size_lv0*8)
+                    )).astype(np.uint8)[...,:3]
+
+                    # generating a tissue patch
                     tissue_mask_patch = tissue_mask[start_y:end_y, start_x:end_x]
                     sum_patch = np.zeros(((end_y - start_y), (end_x - start_x)))
                     name = ''
                     
+                    # extracting annotation from annotation patch and naming patch
                     for anno_mask_key in anno_mask.keys():
                         anno_patch = anno_mask[anno_mask_key][start_y:end_y, start_x:end_x]
-                        if (self.get_ratio_mask(anno_patch) >= anno_ratio) and (self.get_ratio_mask(tissue_mask_patch) >= 0.3):
+                        if (self.get_ratio_mask(anno_patch) >= anno_percent) and (self.get_ratio_mask(tissue_mask_patch) >= 0.3):
                             and_patch = np.logical_and(anno_patch, tissue_mask_patch)*self.mask_tone(anno_mask_key)
                             sum_patch = np.subtract(np.add(and_patch, sum_patch), np.logical_and(and_patch, sum_patch)*self.mask_tone(anno_mask_key))
                             name += '_' + anno_mask_key
 
-                    sum_patch = sum_patch.astype(np.uint8)
-                    if sum_patch.any() != 0:
-                        patch_count += 1 
-                        self.execute_patch(img_patch, img_patch2, img_patch3, sum_patch, patch_count, save_dir=save_patch, name=name, save=save, show=show)
+                    # saving image patches and a mask patch
+                    ## 3 classes mask generation (0: background, 1: tumor1, 2: tumor2)
+                    if classes == 3:
+                        sum_patch = sum_patch.astype(np.uint8)
+                        if sum_patch.any() != 0:
+                            print('3 classes patch generation')
+                            patch_count += 1 
+                            self.execute_patch(img_patch1, img_patch2, img_patch3, img_patch4, sum_patch, patch_count, save_dir=save_patch, name=name, hooknet=hooknet)
+                    ## 4 classes mask generation (0: background, 1: tissue, 2: tumor1, 3: tumor2)
+                    elif classes == 4:    
+                        normal = np.logical_or(tissue_mask_patch,sum_patch)*1
+                        sum_patch = np.add(normal,sum_patch).astype(np.uint8)
+                        if name == '':
+                            name = '_p_10'  # naming tissue patch
+                        if self.get_ratio_mask(sum_patch) >= 0.3:
+                            print('4 classes patch generation')
+                            patch_count += 1 
+                            self.execute_patch(img_patch1, img_patch2, img_patch3, img_patch4, sum_patch, patch_count, save_dir=save_patch, name=name, hooknet=hooknet)
+
+ 
